@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Tesla Sipariş Takip Botu</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <meta charset="UTF-8">
+</head>
+<body class="bg-gray-800 text-white font-sans">
+    <div class="container mx-auto p-4">
+        <h1 class="text-3xl font-bold text-center mb-8">Tesla Sipariş Takip Botu</h1>
+        
+        <!-- Authentication Section -->
+        <div id="auth-section" class="mb-8 bg-gray-700 p-6 rounded-lg shadow-lg">
+            <p class="text-lg mb-3">Tesla hesabınızla yetkilendirme yapmak için aşağıdaki bağlantıya tıklayın ve giriş yapın:</p>
+            <button id="auth-button" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition duration-200" onclick="startAuth()">Yetkilendir</button>
+            <a id="auth-link" class="mt-4 text-blue-400 hover:text-blue-300 underline hidden block break-all" target="_blank">Yetkilendirme bağlantısı burada görünecek</a>
+            <div id="code-input-section" class="mt-4 hidden">
+                <label for="auth-code" class="block text-lg mb-2">"Page Not Found" yazan sayfanın URL'sini buraya yapıştırın:</label>
+                <input id="auth-code" type="text" class="block w-full bg-gray-600 text-white border border-gray-500 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Kod veya URL girin">
+                <button class="bg-green-600 text-white mt-3 px-6 py-2 rounded-lg hover:bg-green-700 transition-colors" onclick="submitCode()">Kodu Gönder</button>
+            </div>
+        </div>
+
+        <div id="loading-spinner" class="hidden fixed inset-0 flex items-center justify-center bg-gray-800 bg-opacity-50">
+            <div class="animate-spin rounded-full h-12 w-12 border-t-4 border-blue-500 border-solid"></div>
+        </div>
+
+        <!-- Orders Section -->
+        <div id="orders-section" class="hidden">
+            <h2 class="text-2xl font-semibold mb-4">Siparişleriniz</h2>
+            <div id="orders-list" class="space-y-6"></div>
+            <button class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 mt-4" onclick="refreshOrders()">Siparişleri Yenile</button>
+        </div>
+    </div>
+
+    <script>
+        function startAuth() {
+            console.log("🔐 startAuth fonksiyonu çağrıldı!");
+            google.script.run.withSuccessHandler(displayAuthUrl).withFailureHandler(displayError).startAuthentication();
+        }
+
+        function displayAuthUrl(authData) {
+            console.log("✅ displayAuthUrl çağrıldı:", authData);
+            const authUrl = authData.authUrl;
+            const authLink = document.getElementById('auth-link');
+            authLink.href = authUrl;
+            authLink.innerText = authUrl;
+            authLink.classList.remove('hidden');
+            document.getElementById('code-input-section').classList.remove('hidden');
+        }
+
+        function submitCode() {
+            console.log("📤 submitCode fonksiyonu çağrıldı!");
+            const codeInput = document.getElementById('auth-code').value;
+            google.script.run.withSuccessHandler(displayOrders).withFailureHandler(displayError).exchangeCodeForTokens(codeInput);
+        }
+
+        function refreshOrders() {
+            console.log("🔄 refreshOrders fonksiyonu çağrıldı!");
+            google.script.run.withSuccessHandler(displayOrders).withFailureHandler(displayError).retrieveOrders();
+        }
+
+        function displayOrders(orders) {
+            console.log("📋 displayOrders çağrıldı:", orders);
+            const ordersList = document.getElementById('orders-list');
+            ordersList.innerHTML = '';
+            orders.forEach(order => {
+                const orderDiv = document.createElement('div');
+                orderDiv.className = 'bg-gray-700 p-6 rounded-lg shadow-md';
+                
+                const registration = order.details.tasks?.deliveryDetails?.regData || {};
+                const regDetails = registration.regDetails || {};
+                const registrationAddress = registration.registrationAddress || {};
+                const deliveryDetails = registration.deliveryDetails || {};
+                const deliveryAddress = deliveryDetails.address || {};
+                const scheduling = order.details.tasks?.scheduling || {};
+                const finalPayment = order.details.tasks?.finalPayment?.data || {};
+                const insurance = order.details.tasks?.insurance || {};
+                const financing = order.details.tasks?.financing || {};
+                const orderDetails = order.details.tasks?.registration?.orderDetails || {};
+
+                // mktOptions'ı kullanıcı dostu bir şekilde ayrıştır (örnek mapping)
+                const mktOptionsMap = {
+                    // Eski kodlar (korundu, gerekirse kaldırılabilir)
+                    'APBS': 'Otopilot',
+                    'IPB7': 'Siyah İç Mekan',
+                    'PN00': 'Quicksilver',
+                    'PPSB': 'Deep Blue',
+                    'PR00': 'Midnight Cherry Red',
+                    'PR01': 'Ultra Red',
+                    'PMNG': 'Midnight Silver Metallic',
+                    'PPSW': 'Pearl White Multi-Coat',
+                    'PBSB': 'Solid Black',
+                    'PN01': 'Stealth Grey',
+                    'PPMR': 'Red Multi-Coat',
+                    'SC04': 'Ücretli Supercharger',
+                    'MDLY': 'Model Y',
+                    'WY19P': '19" Beyaz Jantlar',
+                    'MTY46': 'Standart Motor',
+                    'STY5S': '5 Koltuklu',
+                    'CPF0': 'Standart Bağlantı',
+                    // Yeni tablodan kodlar
+                    'ACL1': 'Ludicrous Modu',
+                    'AD02': 'NEMA 14-50 Adaptörü',
+                    'AD04': 'Avrupa 3-Faz Adaptörü',
+                    'AD05': 'Avrupa 3-Faz, IT Adaptörü',
+                    'AD06': 'Schuko Adaptörü (1 faz, 230V 13A)',
+                    'AD07': 'Kırmızı IEC309 Adaptörü (3 faz, 400V 16A)',
+                    'AD08': 'Mavi Şarj Adaptörü',
+                    'AD09': 'İsviçre Adaptörü (1 faz, 10A)',
+                    'AD10': 'Danimarka Adaptörü (1 faz, 13A)',
+                    'AD11': 'İtalya Adaptörü (1 faz, 13A)',
+                    'AD15': 'Adaptör',
+                    'ADPX2': 'Tip 2 Genel Şarj Konektörü',
+                    'ADX4': 'Avrupa 3-Faz Yok',
+                    'ADX5': 'Avrupa 3-Faz, IT',
+                    'ADX6': 'Schuko Adaptörü Yok (1 faz, 13A)',
+                    'ADX7': '3-Faz Kırmızı IEC309 Yok (3 faz, 16A)',
+                    'ADX8': 'Mavi IEC309 (1 faz, 230V 32A)',
+                    'ADX9': 'İsviçre Adaptörü Yok (1 faz, 10A)',
+                    'AF00': 'HEPA Filtresi Yok',
+                    'AF02': 'HEPA Filtresi',
+                    'AH00': 'Aksesuar Çeki Demiri Yok',
+                    'AL03': 'İç Mekan RGB Aydınlatma',
+                    'AP04': 'Otopilot 4.0',
+                    'APB1': 'Otopilot Konfor Özellikleri',
+                    'APF0': 'Otopilot Yazılımı 2.0 Temel',
+                    'APF1': 'Otopilot Yazılımı 2.0 Geliştirilmiş',
+                    'APF2': 'Tam Otonom Sürüş Donanımı (Aktif)',
+                    'APFB': 'Tam Otonom Sürüş Donanımı',
+                    'APH1': 'Donanım 1.0',
+                    'APH2': 'Donanım 2.0',
+                    'APH3': 'Donanım 2.5',
+                    'APH4': 'Donanım 3.0',
+                    'APPA': 'Otopilot Donanımı 1',
+                    'APPB': 'Geliştirilmiş Otopilot',
+                    'APPF': 'Tam Otonom Sürüş Yeteneği',
+                    'AU00': 'Ses Paketi Yok',
+                    'AU01': 'Ultra Yüksek Sadakat Ses',
+                    'AU3D': 'Ses Stüdyo Paketi',
+                    'AU3P': 'Ses Stüdyo Paketi',
+                    'AUF1': 'Premium Hoparlörler Aktif',
+                    'AUF2': 'Premium Hoparlörler Pasif',
+                    'BC00': 'Fren Kaliperleri M4.42/44',
+                    'BC0B': 'Siyah Fren Kaliperleri',
+                    'BC0R': 'Kırmızı Fren Kaliperleri',
+                    'BC3B': 'Siyah Fren Kaliperleri',
+                    'BC3R': 'Siyah Fren Kaliperleri, Kırmızı',
+                    'BC50': 'Performans Frenleri P2',
+                    'BCMB': 'Siyah Fren Kaliperleri (Mando)',
+                    'BCYR': 'Performans Frenleri',
+                    'BG30': 'Rozet Yok',
+                    'BG31': 'Çift Çeker Rozeti (Çizgisiz)',
+                    'BG32': 'Performans Çift Çeker Rozeti',
+                    'BG33': 'Çin Rozeti',
+                    'BP00': 'Ludicrous Yok',
+                    'BP01': 'Ludicrous Hız Yükseltmesi',
+                    'BP02': 'Serbest Hızlanma',
+                    'BR00': 'Batarya Yazılım Sınırı Yok',
+                    'BR03': 'Batarya Yazılım Sınırı (60kWh)',
+                    'BR05': 'Batarya Yazılım Sınırı (75kWh)',
+                    'BS00': 'Kör Nokta Sensörleri Yok',
+                    'BS01': 'Özel Üretim Bayrağı',
+                    'BT00': '68 kWh (Model Y) 4680 hücreler',
+                    'BT01': '60kWh BYD 7C Blade',
+                    'BT35': '50 kWh (Model 3/Y) 2021 Öncesi Panasonic',
+                    'BT36': '62.5 kWh (Model 3/Y) 2021 Öncesi Panasonic',
+                    'BT37': '75 kWh (Model 3/Y) 2021 Öncesi Panasonic',
+                    'BT38': '74 kWh (Model 3/Y) LG hücreleri',
+                    'BT3D': '50 kWh (Model 3)',
+                    'BT40': '40 kWh',
+                    'BT41': '55 kWh 2021 E1 2170L Panasonic',
+                    'BT42': '82 kWh (Model 3/Y) 2021 Panasonic',
+                    'BT43': '79 kWh (Model 3/Y) 2021 LG NCA',
+                    'BT60': '60 kWh',
+                    'BT70': '70 kWh',
+                    'BT85': '85 kWh',
+                    'BTF0': '55 kWh 2020 CATL Prizmatik',
+                    'BTF1': '60 kWh E1 LFP60 CATL Batarya',
+                    'BTX4': '90 kWh',
+                    'BTX5': '75 kWh',
+                    'BTX6': '100 kWh',
+                    'BTX7': '75 kWh',
+                    'BTX8': '75 kWh',
+                    'BTX9': '100 kWh Batarya Paketi (Ağırlık Azaltmalı)',
+                    'BTXA': '18650J2 Batarya Hücresi',
+                    'BTXB': '99kWh 18650 Plaid E5/E6 VIN batarya',
+                    'BY00': 'Model Y',
+                    'BY01': 'Tek Parça Döküm Arka Alt Gövde',
+                    'BY02': 'Tek Parça Döküm Ön ve Arka Alt Gövde',
+                    'BY03': 'Güvenlik Ağı Gövdesi',
+                    'BY04': 'Tek Parça Döküm Arka Güvenlik Ağı Gövdesi',
+                    'CC01': 'Beş Koltuklu İç Mekan',
+                    'CC02': 'Altı Koltuklu İç Mekan',
+                    'CC03': 'Yedi Koltuklu İç Mekan',
+                    'CC04': 'Yedi Koltuklu İç Mekan',
+                    'CC12': 'Orta Konsollu Altı Koltuklu İç Mekan',
+                    'CDM0': 'CHAdeMO Şarj Adaptörü Yok',
+                    'CF00': '72amp Yüksek Güç Şarj Cihazı',
+                    'CF01': '48amp Şarj Cihazı',
+                    'CH00': 'Standart Şarj Cihazı (40 Amp)',
+                    'CH01': 'Çift Şarj Cihazı (80 Amp)',
+                    'CH04': '72 Amp Yüksek Amperaj Şarj Cihazı Gen3',
+                    'CH05': '32/48 Amp Şarj Cihazı',
+                    'CH06': '48 Amp Şarj Cihazı',
+                    'CH07': '48 Amp Şarj Cihazı',
+                    'CH09': 'Tesla Standart Şarj Sistemi 72a (Gen3)',
+                    'CH11': 'Tek Faz 48 Amperaj Combo 1',
+                    'CH12': '48 Amperaj Combo 1 Gen 3.5 Şarj Cihazı',
+                    'CH14': '32 Amp Şarj Cihazı Donanımı (RENA) Busbarlı',
+                    'CH15': '48 Amp Şarj Cihazı Donanımı (REEU/REAP) Busbarlı',
+                    'CH16': '48 Amp Şarj Cihazı Donanımı (RENA) Busbarlı',
+                    'CH17': '48 Amp 1PH&3PH, P2',
+                    'COAT': 'Ülke: Avusturya',
+                    'COAU': 'Ülke: Avustralya',
+                    'COBE': 'Ülke: Belçika',
+                    'COCA': 'Ülke: Kanada',
+                    'COCH': 'Ülke: İsviçre',
+                    'COCN': 'Ülke: Çin',
+                    'CODE': 'Ülke: Almanya',
+                    'CODK': 'Ülke: Danimarka',
+                    'COES': 'Ülke: İspanya',
+                    'COFI': 'Ülke: Finlandiya',
+                    'COFR': 'Ülke: Fransa',
+                    'COGB': 'Ülke: Birleşik Krallık',
+                    'COHR': 'Ülke: Hırvatistan',
+                    'COIE': 'Ülke: İrlanda',
+                    'COIL': 'Ülke: İsrail',
+                    'COIT': 'Ülke: İtalya',
+                    'COJP': 'Ülke: Japonya',
+                    'COKR': 'Ülke: Güney Kore',
+                    'COL0': 'İmza',
+                    'COL1': 'Düz Renk',
+                    'COL2': 'Metalik',
+                    'COL3': 'Tesla Çok Katmanlı',
+                    'COLU': 'Ülke: Lüksemburg',
+                    'CONL': 'Ülke: Hollanda',
+                    'CONO': 'Ülke: Norveç',
+                    'CONZ': 'Ülke: Yeni Zelanda',
+                    'COPT': 'Ülke: Portekiz',
+                    'COSE': 'Ülke: İsveç',
+                    'COSG': 'Ülke: Singapur',
+                    'COTR': 'Ülke: Türkiye',
+                    'COUS': 'Ülke: Amerika Birleşik Devletleri',
+                    'CP00': 'Kuzey Amerika Şarj Portu (TPC)',
+                    'CP01': 'Şarj Portu Gen? CCS boyutu',
+                    'CP03': 'CCS2 Entegre Şarj Portu',
+                    'CPF1': 'Premium Bağlantı',
+                    'CPW1': '20" Performans Jantları',
+                    'CR01': 'Sanden İthal Kompresör',
+                    'CR02': 'Denso İthal Kompresör',
+                    'CW00': 'Soğuk Hava Paketi Yok',
+                    'CW02': 'Subzero Soğuk Hava Paketi',
+                    'DA00': 'Otopilot Yok',
+                    'DA01': 'Aktif Güvenlik (ACC, LDW, SA)',
+                    'DA02': 'Otopilot Konfor Özellikleri',
+                    'DCF0': 'Ön Konsol Düşürme Yok',
+                    'DCF2': 'Ön Konsol Endüktif Telefon Şarj Cihazı',
+                    'DRLH': 'Soldan Direksiyon',
+                    'DRRH': 'Sağdan Direksiyon',
+                    'DSH5': 'PUR Gösterge Paneli',
+                    'DSH7': 'Alcantara Gösterge Paneli Aksanları',
+                    'DSHG': 'Grafit Kaplamalı Gösterge Paneli',
+                    'DU00': 'Sürücü Ünitesi - IR',
+                    'DU01': 'Sürücü Ünitesi - Infineon',
+                    'DU02': 'Sürücü Ünitesi - Performanssız Ön Sürücü (Raven)',
+                    'DV2W': 'Arka Tekerlekten Çekiş',
+                    'DV4W': 'Dört Tekerlekten Çekiş',
+                    'EUSB': 'Güvenlik AB Siyah',
+                    'FBBB': 'Ön Fren Brembo Siyah',
+                    'FBBR': 'Ön Fren Brembo Kırmızı',
+                    'FC01': 'Ön Konsol Endüktif Telefon Şarj Cihazı',
+                    'FC02': 'Ön Konsol (Premium)',
+                    'FC03': 'Ön Konsol 3.0',
+                    'FC3P': 'Ön Konsol (Premium)',
+                    'FCH2': 'Ön Kontrolör Sert v2 (FSD ve FSD dışı destekler)',
+                    'FD00': 'Düşük Akım IGBT IM130 Sürücü Ünitesi',
+                    'FD01': 'Düşük Akım IGBT IM130 Sürücü Ünitesi, CN/DE',
+                    'FD02': 'P2 Ön Sürücü Ünitesi',
+                    'FD03': 'P2 Kılıflı Ön Sürücü Ünitesi',
+                    'FDU2': 'Raven Ön Sürücü Ünitesi',
+                    'FG00': 'Dış Aydınlatma Paketi Yok',
+                    'FG01': 'Sis Farları',
+                    'FG02': 'Dış Aydınlatma Paketi',
+                    'FG31': 'Sis Farları',
+                    'FG3B': 'Sis Farı Kapağı (Sis Farı Yok)',
+                    'FGF0': 'Sis Farları Pasif',
+                    'FGF1': 'Sis Farları Aktif',
+                    'FM3B': 'Performans Paketi Yok',
+                    'FM3P': 'Performans Paketi',
+                    'FM3S': 'Yarı Düşürülmüş Yazılım',
+                    'FM3U': 'Hızlanma Artışı',
+                    'FMP6': 'Performans Yazılımı',
+                    'FR01': 'Temel Ön Sıra',
+                    'FR02': 'Havalandırmalı Ön Koltuklar',
+                    'FR03': 'Ön Sıra Koltuğu',
+                    'FR04': 'Ön Sıra Koltuğu',
+                    'FR05': 'Ön Sıra Koltuğu',
+                    'GLCN': 'Montaj',
+                    'GLFR': 'Montaj',
+                    'GLTL': 'Montaj',
+                    'HC00': 'Ev Şarj Kurulumu Yok',
+                    'HC01': 'Ev Şarj Kurulumu',
+                    'HM30': 'Teknoloji Paketi - Homelink Yok',
+                    'HM31': 'Teknoloji Paketi - Homelink',
+                    'HP00': 'HPWC Sipariş Edilmedi',
+                    'HP01': 'HPWC Sipariş Edildi',
+                    'HP30': 'Isı Pompası Yüklemesi Yok',
+                    'HP31': 'Isı Pompası Tesisi',
+                    'I36M': 'Arka Sürücü Ünitesi İnvertörü 600A Mosfet',
+                    'I38M': 'Arka Sürücü Ünitesi İnvertörü 800A Mosfet',
+                    'IBB0': 'Tamamen Siyah İç Mekan',
+                    'IBB1': 'Tamamen Siyah İç Mekan',
+                    'IBC00': 'Karbon Fiber Dekor ve Siyah İç Mekan',
+                    'IBE00': 'Ahşap Dekor ve Siyah İç Mekan',
+                    'IBW0': 'Siyah ve Beyaz İç Mekan',
+                    'IBW1': 'Siyah ve Beyaz İç Mekan',
+                    'IC00': 'Siyah Renk Yolu',
+                    'IC01': 'Beyaz Renk Yolu İç Mekan',
+                    'IC02': 'Krem Renk Yolu İç Mekan',
+                    'ICC00': 'Karbon Fiber Dekor ve Krem İç Mekan',
+                    'ICW00': 'Ahşap Dekor ve Krem İç Mekan',
+                    'ID00': 'Abanoz Ahşap Dekoru',
+                    'ID02': 'Tamamen Siyah Premium İç Mekan ve Karbon Fiber Dekor',
+                    'ID03': 'Ceviz Kaplama (2021+ Model S/X)',
+                    'ID3A': 'İç Mekan Beyaz Alüminyum',
+                    'ID3W': 'İç Mekan Ahşap Dekoru',
+                    'IDBA': 'Koyu Kül Ahşap Dekoru',
+                    'IDBO': 'Aşılı Kül Ahşap Dekoru',
+                    'IDCF': 'Karbon Fiber Dekoru',
+                    'IDHG': 'Parlak Yatay IP Dekoru',
+                    'IDHM': 'Mat Obeche Ahşap Dekoru',
+                    'IDLW': 'Dantel Ağacı Dekoru',
+                    'IDOG': 'Parlak Obeche Ahşap Dekoru',
+                    'IDOK': 'Meşe Dekoru',
+                    'IDOM': 'Mat Obeche Ahşap Dekoru',
+                    'IDPB': 'Piyano Siyah Dekoru',
+                    'IL31': 'İç Mekan Ambiant Aydınlatma',
+                    'ILF0': 'Ambiant Aydınlatma Pasif',
+                    'ILF1': 'Ambiant Aydınlatma Aktif',
+                    'IN3BB': 'Tam Siyah Kısmi Premium İç Mekan',
+                    'IN3BW': 'Siyah ve Beyaz İç Mekan',
+                    'IN3PB': 'Tam Siyah Premium İç Mekan',
+                    'IN3PW': 'Tam Beyaz Premium İç Mekan',
+                    'INB3C': 'Açık Bej Premium İç Mekan ve Meşe Kaplama',
+                    'INB3P': 'Tam Siyah Premium İç Mekan/Aşılı Kül',
+                    'INBBW': 'Beyaz İç Mekan',
+                    'INBC3W': 'Premium Siyah ve Beyaz İç Mekan ve Karbon Fiber Dekoru',
+                    'INBFP': 'Klasik Siyah İç Mekan',
+                    'INBPP': 'Siyah İç Mekan',
+                    'INBPW': 'Beyaz Koltuklar İç Mekan',
+                    'INBTB': 'Çok Desenli Siyah İç Mekan',
+                    'INFBP': 'Siyah Premium İç Mekan',
+                    'INLPC': 'Krem İç Mekan',
+                    'INLPP': 'Siyah / Açık Tavan İç Mekan',
+                    'INPB0': 'Tam Siyah İç Mekan ve Kapı Panelinde Ahşap',
+                    'INPB1': 'Tam Siyah İç Mekan',
+                    'INPW0': 'Siyah ve Beyaz İç Mekan ve Kapı Panelinde Ahşap',
+                    'INPW1': 'Siyah ve Beyaz İç Mekan',
+                    'INWPT': 'Açık Kahverengi İç Mekan',
+                    'INYPB': 'Tam Siyah Premium İç Mekan',
+                    'INYPW': 'Siyah ve Beyaz Premium İç Mekan',
+                    'IPB0': 'Siyah İç Mekan',
+                    'IPB1': 'Siyah İç Mekan',
+                    'IPB2': 'Siyah İç Mekan',
+                    'IPB3': 'Siyah İç Mekan',
+                    'IPW0': 'Beyaz İç Mekan',
+                    'IPW1': 'Beyaz İç Mekan',
+                    'IPW2': 'Beyaz İç Mekan',
+                    'IPW3': 'Beyaz İç Mekan',
+                    'IVBPP': 'Tam Siyah İç Mekan',
+                    'IVBSW': 'Ultra Beyaz İç Mekan',
+                    'IVBTB': 'Tam Siyah İç Mekan',
+                    'IVLPC': 'Vegan Krem İç Mekan',
+                    'IWC00': 'Karbon Fiber Dekor ve Siyah ve Beyaz İç Mekan',
+                    'IWW00': 'Ahşap Dekor ve Siyah ve Beyaz İç Mekan',
+                    'IX00': 'Genişletilmiş Nappa Deri Kaplama Yok',
+                    'IX01': 'Genişletilmiş Nappa Deri Kaplama',
+                    'LLP1': 'Kuzey Amerika Plaka Açılır Kapak Tipi',
+                    'LLP2': 'Avrupa Plaka Açılır Kapak Tipi',
+                    'LP00': 'Aydınlatma Paketi Yok',
+                    'LP01': 'Aydınlatma Paketi',
+                    'LS01': 'Şanghay Üretim Hattı - Faz 1',
+                    'LS02': 'Şanghay Üretim Hattı - Faz 2.2',
+                    'LT00': 'Vegan İç Mekan',
+                    'LT01': 'Standart İç Mekan',
+                    'LT03': 'İç Mekan',
+                    'LT1B': 'Alt Trim',
+                    'LT3W': 'Alt Trim',
+                    'LT4B': 'Alt Trim',
+                    'LT4C': 'Alt Trim',
+                    'LT4W': 'Alt Trim',
+                    'LT5C': 'Alt Trim',
+                    'LT5P': 'Siyah PUR Premium Alt Trim ve Siyah IP',
+                    'LT5W': 'Alt Trim Siyah PUR ve Beyaz İç Mekan',
+                    'LT6P': 'Siyah PUR Alt Trim ve Performans Dikiş',
+                    'LT6W': 'Beyaz Temel Alt Trim',
+                    'LTBC': 'Krem PUR Alt Trim ve Siyah Halılar',
+                    'LTPB': 'Siyah PUR Alt Trim',
+                    'LTPW': 'Beyaz PUR Alt Trim',
+                    'LTSB': 'Standart Siyah Alt Trim',
+                    'LVB0': '12V Asit Düşük Voltajlı Batarya',
+                    'LVB1': '15V Li-Ion Düşük Voltajlı Batarya',
+                    'LVB2': 'CATL 16V Batarya',
+                    'M301': '2022 1. Nesil',
+                    'M302': '2024 2. Nesil',
+                    'MDL3': 'Model 3',
+                    'MDLS': 'Model S',
+                    'MDLX': 'Model X',
+                    'MDLY': 'Model Y',
+                    'ME01': 'Hafif Koltuklar',
+                    'ME02': 'Koltuk Hafızası',
+                    'MI00': '1. Nesil Üretim',
+                    'MI01': '2. Nesil Üretim',
+                    'MI02': '3. Nesil Üretim',
+                    'MI03': '4. Nesil Üretim',
+                    'MI04': '5. Nesil Üretim',
+                    'MI07': '8. Nesil Üretim',
+                    'MR30': 'Teknoloji Paketi - Ayna Var',
+                };
+                const mktOptions = order.order.mktOptions
+                    ? order.order.mktOptions.split(',').map(code => mktOptionsMap[code] || code).join(', ')
+                    : 'Bilinmiyor';
+
+                orderDiv.innerHTML = `
+                    <h3 class="font-bold text-xl mb-4">✅ Sipariş Özeti</h3>
+                    <p class="mb-2"><strong>📋 Sipariş No:</strong> ${order.order.referenceNumber}</p>
+                    <p class="mb-2"><strong>🚗 VIN:</strong> ${order.order.vin || 'Bilinmiyor'}</p>
+                    <p class="mb-2"><strong>📅 Sipariş Tarihi:</strong> ${orderDetails.orderPlacedDate || 'Bilinmiyor'}</p>
+                    <p class="mb-2"><strong>📅 Rezervasyon Tarihi:</strong> ${orderDetails.orderBookedDate || 'Bilinmiyor'}</p>
+                    <p class="mb-2"><strong>🚘 Model:</strong> ${order.order.modelCode === 'my' ? 'Model Y' : order.order.modelCode || 'Bilinmiyor'}</p>
+                    <p class="mb-2"><strong>🛠️ Konfigürasyon:</strong> ${mktOptions}</p>
+                    <p class="mb-2"><strong>💰 Rezervasyon Ödemesi:</strong> ${orderDetails.orderAmount ? orderDetails.orderAmount + ' TRY' : 'Bilinmiyor'}</p>
+                    <p class="mb-2"><strong>📏 Kilometre:</strong> ${orderDetails.vehicleOdometer ? orderDetails.vehicleOdometer + ' ' + (orderDetails.vehicleOdometerType || 'km') : 'Bilinmiyor'}</p>
+                    <p class="mb-2"><strong>🌍 Ülke:</strong> ${order.order.countryCode || 'Bilinmiyor'}</p>
+                    <p class="mb-2"><strong>📍 Yerel Ayar:</strong> ${order.order.locale || 'Bilinmiyor'}</p>
+                    <p class="mb-2"><strong>💼 İşletme Siparişi:</strong> ${order.order.isB2b ? 'Evet' : 'Hayır'}</p>
+                    <p class="mb-2"><strong>🛠️ Tesla Assist:</strong> ${order.order.isTeslaAssistEnabled ? 'Evet' : 'Hayır'}</p>
+                    <p class="mb-2"><strong>🚗 Kullanılmış Araç:</strong> ${order.order.isUsed ? 'Evet' : 'Hayır'}</p>
+
+                    <h3 class="font-bold text-xl mt-6 mb-4">📅 Teslimat Bilgileri</h3>
+                    <p class="mb-2"><strong>🕒 Tahmini Teslimat Aralığı:</strong> ${scheduling.deliveryWindowDisplay || 'Bilinmiyor'}</p>
+                    <p class="mb-2"><strong>🚛 Merkeze Tahmini Geliş:</strong> ${finalPayment.etaToDeliveryCenter || 'Bilinmiyor'}</p>
+                    <p class="mb-2"><strong>📅 Teslimat Tarihi:</strong> ${scheduling.apptDateTimeAddressStr || 'Bilinmiyor'}</p>
+                    <p class="mb-2"><strong>📍 Teslimat Adresi:</strong> ${deliveryAddress.address1 || 'Bilinmiyor'}, ${deliveryAddress.city || ''}, ${deliveryAddress.stateProvince || ''}, ${deliveryAddress.zipCode || ''}, ${deliveryAddress.countryCode || ''}</p>
+                    <p class="mb-2"><strong>📍 Yönlendirme Konumu:</strong> ${orderDetails.vehicleRoutingLocation || 'Bilinmiyor'}</p>
+                    <p class="mb-2"><strong>🚚 Teslimat Türü:</strong> ${deliveryDetails.deliveryType === 'PICKUP_SERVICE_CENTER' ? 'Servis Merkezi Teslimatı' : deliveryDetails.deliveryType || 'Bilinmiyor'}</p>
+                    <p class="mb-2"><strong>✅ Teslimat Durumu:</strong> ${registration.complete ? 'Tamamlandı' : 'Tamamlanmadı'}</p>
+
+                    <h3 class="font-bold text-xl mt-6 mb-4">🛡️ Sigorta Bilgileri</h3>
+                    <p><strong>Durum:</strong> ${insurance.status || 'Bilinmiyor'}</p>
+                    <p><strong>Poliçe Numarası:</strong> ${insurance.insurancePolicyNumber || 'Bilinmiyor'}</p>
+
+                    <h3 class="font-bold text-xl mt-6 mb-4">💸 Ödeme Bilgileri</h3>
+                    <p class="mb-2"><strong>💰 Kalan Tutar:</strong> ${finalPayment.remainingAmount || 'Bilinmiyor'}</p>
+                    <p class="mb-2"><strong>💵 Toplam Tutar:</strong> ${finalPayment.totalAmount || 'Bilinmiyor'}</p>
+                    <p class="mb-2"><strong>💳 Ödeme Yöntemi:</strong> ${registration.orderType === 'CASH' ? 'Nakit' : finalPayment.paymentMethod || 'Bilinmiyor'}</p>
+                    <p class="mb-2"><strong>📋 Ödeme Durumu:</strong> ${finalPayment.paymentStatus || 'Bekleniyor'}</p>
+                    <p class="mb-2"><strong>📈 Finansman Durumu:</strong> ${financing.status || finalPayment.financingStatus || 'Bilinmiyor'}</p>
+                `;
+                ordersList.appendChild(orderDiv);
+            });
+            document.getElementById('orders-section').classList.remove('hidden');
+        }
+
+        function displayError(error) {
+            console.error("🚨 Hata oluştu:", error);
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'bg-red-500 text-white p-4 rounded-lg mt-4';
+            errorDiv.innerText = `Hata: ${error.message || 'Bilinmeyen bir hata oluştu.'}`;
+            document.getElementById('orders-section').prepend(errorDiv);
+        }
+    </script>
+</body>
+</html>
