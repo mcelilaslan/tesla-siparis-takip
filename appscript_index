@@ -382,7 +382,7 @@
                     'MI04': '5. Nesil Üretim',
                     'MI07': '8. Nesil Üretim',
                     'MR30': 'Teknoloji Paketi - Ayna Var',
-            // ... (diğer kodlar senin listesinden)
+        
         };
 
         function startAuth() {
