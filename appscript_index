@@ -382,10 +382,10 @@
                     'MI04': '5. Nesil Üretim',
                     'MI07': '8. Nesil Üretim',
                     'MR30': 'Teknoloji Paketi - Ayna Var',
-        
+            // ... (diğer kodlar senin listesinden)
         };
 
-        function startAuth() {
+       function startAuth() {
             console.log("🔐 startAuth fonksiyonu çağrıldı!");
             document.getElementById('loading-spinner').classList.remove('hidden');
             google.script.run
@@ -452,6 +452,21 @@
                 // Teslimat noktası
                 const pickupLocation = locationMap[deliveryDetails.pickupLocationTrtId] || 'Bilinmeyen Teslimat Noktası';
 
+                // Ödeme detaylarını al
+                const paymentDetails = finalPayment.paymentDetails || [];
+                // Ödemeleri liste haline getir
+                const paymentList = paymentDetails.length > 0
+                    ? paymentDetails.map(payment => {
+                        const date = payment.paymentReceivedDate ? new Date(payment.paymentReceivedDate).toISOString().split('T')[0] : 'Bilinmiyor';
+                        const amount = payment.amountPaid ? new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(payment.amountPaid) : '0 ₺';
+                        return `<li class="mb-1">💸 ${amount} (${date})</li>`;
+                      }).join('')
+                    : '<li class="mb-1">💸 Ödeme bulunamadı</li>';
+                // Toplam borcu hesapla
+                const totalPaid = paymentDetails.reduce((sum, payment) => sum + (payment.amountPaid || 0), 0);
+                const totalPaidFormatted = new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(totalPaid);
+                const remainingAmount = finalPayment.amountDue ? new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(finalPayment.amountDue) : '0 ₺';
+
                 orderDiv.innerHTML = `
                     <h3 class="font-bold text-xl mb-4">✅ Sipariş Özeti</h3>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -482,25 +497,30 @@
                             <p class="mb-2"><strong>📅 Teslimat Tarihi:</strong> ${scheduling.apptDateTimeAddressStr || 'Bilinmiyor'}</p>
                         </div>
                         <div>
-                            <p class="mb-2"><strong>📍 Teslimat Noktası:</strong> ${pickupLocation}</p>
-                            <p class="mb-2"><strong>🚚 Teslimat Türü:</strong> ${deliveryDetails.deliveryType === 'PICKUP_SERVICE_CENTER' ? 'Servis Merkezi Teslimatı' : deliveryDetails.deliveryType || 'Bilinmiyor'}</p>
-                            <p class="mb-2"><strong>✅ Teslimat Durumu:</strong> ${registration.complete ? 'Tamamlandı' : 'Tamamlanmadı'}</p>
+                            <p class="mb-2"><strong>📍 Teslimat Adresi:</strong> ${deliveryAddress.line1 ? `${deliveryAddress.line1}, ${deliveryAddress.city}, ${deliveryAddress.state} ${deliveryAddress.postalCode}` : pickupLocation}</p>
+                            <p class="mb-2"><strong>📍 Konum:</strong> <a href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(deliveryAddress.line1 ? `${deliveryAddress.line1}, ${deliveryAddress.city}, ${deliveryAddress.state} ${deliveryAddress.postalCode}` : pickupLocation)}" target="_blank" class="text-blue-400 hover:underline">Google Maps</a></p>
+                            <p class="mb-2"><strong>🚚 Teslimat Türü:</strong> ${deliveryDetails.deliveryType === 'PICKUP_SERVICE_CENTER' ? 'Servis Merkezi Teslimatı' : deliveryDetails.deliveryType || ''}</p>
+                            <p class="mb-2"><strong>✅ Teslimat Durumu:</strong> ${registration.disabled ? 'Tamamlandı' : 'Tamamlanmadı'}</p>
                         </div>
                     </div>
 
                     <h3 class="font-bold text-xl mt-6 mb-4">🛡️ Sigorta Bilgileri</h3>
-                    <p class="mb-2"><strong>Durum:</strong> ${insurance.status || 'Bilinmiyor'}</p>
-                    <p class="mb-2"><strong>Poliçe Numarası:</strong> ${insurance.insurancePolicyNumber || 'Bilinmiyor'}</p>
+                    <p class="mb-2"><strong>📜Durum:</strong> ${insurance.status === 'COMPLETE' ? 'Sigorta Tamamlandı' : insurance.status || 'Tamamlanmadı'}</p>
+                    <p class="mb-2"><strong>🔢Poliçe Numarası:</strong> ${insurance.insurancePolicyNumber || ''}</p>
 
                     <h3 class="font-bold text-xl mt-6 mb-4">💸 Ödeme Bilgileri</h3>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                            <p class="mb-2"><strong>💰 Kalan Tutar:</strong> ${finalPayment.amountDue ? new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(finalPayment.amountDue) : 'Bilinmiyor'}</p>
-                            <p class="mb-2"><strong>💳 Ödeme Yöntemi:</strong> ${registration.orderType === 'CASH' ? 'Nakit' : financing.messageBody || 'Bilinmiyor'}</p>
+                            <h4 class="font-semibold mb-2">💸 Ödenen Tutarlar</h4>
+                            <ul class="list-disc list-inside mb-4">${paymentList}</ul>
+                            <p class="mb-2"><strong>💰 Toplam Ödenen:</strong> ${totalPaidFormatted}</p>
+                            <p class="mb-2"><strong>💰 Kalan Tutar:</strong> ${remainingAmount}</p>
+                            <p class="mb-2"><strong>💳 Ödeme Yöntemi:</strong> ${finalPayment.orderType === 'CASH' ? 'Nakit' : financing.messageBody || 'Bilinmiyor'}</p>
                         </div>
                         <div>
-                            <p class="mb-2"><strong>📋 Ödeme Durumu:</strong> ${finalPayment.complete ? 'Tamamlandı' : 'Bekleniyor'}</p>
-                            <p class="mb-2"><strong>📈 Finansman Durumu:</strong> ${financing.status || 'Bilinmiyor'}</p>
+                            <h4 class="font-semibold mb-2">💸 Ödeme ve Finansman</h4>
+                           <p class="mb-2"><strong>📋 Ödeme Durumu:</strong> ${finalPayment.finalPaymentStatus === 'PAYMENT_CLEARED' ? 'Tamamlandı' : 'Bekleniyor'}</p>
+                           <p class="mb-2"><strong>📈 Finansman Durumu:</strong> ${financing.status === 'FINANCE_COMPLETE_EDITABLE' ? 'Finansman Tamamlandı' : financing.status || 'Yok'}</p>
                         </div>
                     </div>
                 `;
@@ -510,7 +530,7 @@
         }
 
         function displayError(error) {
-            console.error("🚨 Hata oluştu:", error);
+            console.error("🔴 Hata oluştu:", error);
             document.getElementById('loading-spinner').classList.add('hidden');
             const errorDiv = document.createElement('div');
             errorDiv.className = 'bg-red-500 text-white p-4 rounded-lg mt-4';
